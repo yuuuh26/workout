@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>筋トレカスタム記録</title>
+    <title>筋トレローカル記録 - YUU Edition</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -34,15 +34,27 @@
             text-align: left;
         }
 
+        .selector-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
         .workout-selector {
-            width: 100%;
+            flex: 1;
             padding: 12px;
             font-size: 16px;
             border-radius: 10px;
             border: 1px solid #ccd1d9;
-            margin-bottom: 15px;
             font-weight: bold;
             background-color: #fff;
+        }
+        .btn-delete-menu {
+            background-color: #ff4757;
+            color: white;
+            border-radius: 10px;
+            padding: 0 15px;
+            font-size: 14px;
+            cursor: pointer;
         }
 
         .input-box {
@@ -57,9 +69,9 @@
             font-weight: bold;
             text-align: center;
             border-radius: 14px;
-            border: 2px solid #ff4757;
+            border: 2px solid #2ed573;
             box-sizing: border-box;
-            color: #ff4757;
+            color: #2ed573;
         }
         
         .btn-grid {
@@ -110,15 +122,8 @@
             justify-content: space-between;
             align-items: center;
         }
-        .clear-all-btn {
-            font-size: 12px;
-            background: #dfe4ea;
-            color: #747d8c;
-            padding: 4px 8px;
-            border-radius: 6px;
-        }
         .history-list {
-            max-height: 250px;
+            max-height: 280px;
             overflow-y: auto;
             border-radius: 12px;
             background: #f8f9fa;
@@ -128,31 +133,57 @@
             padding: 12px 8px;
             border-bottom: 1px solid #edf2f7;
             font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .history-item:last-child { border-bottom: none; }
+        .history-content { flex: 1; }
         .history-meta {
             display: flex;
             justify-content: space-between;
             color: #747d8c;
             font-size: 12px;
             margin-bottom: 4px;
+            padding-right: 15px;
         }
         .history-data {
             display: flex;
             justify-content: space-between;
             font-weight: bold;
+            padding-right: 15px;
         }
         .menu-name { color: #2d3436; }
-        .count-val { color: #ff4757; }
+        .count-val { color: #2ed573; }
+        .btn-item-delete {
+            background: none;
+            color: #a4b0be;
+            font-size: 16px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-item-delete:hover { color: #ff4757; }
+
+        .signature {
+            margin-top: 20px;
+            font-size: 11px;
+            color: #b2bec3;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🔥 筋トレカスタム記録 🔥</h1>
+    <h1>🔥 筋トレ記録 🔥</h1>
     
     <span class="label">種目の選択</span>
-    <select class="workout-selector" id="workoutSelect"></select>
+    <div class="selector-box">
+        <select class="workout-selector" id="workoutSelect"></select>
+        <button class="btn-delete-menu" onclick="deleteCurrentMenu()">消去 ❌</button>
+    </div>
 
     <div class="input-box">
         <span class="label">行った回数を入力</span>
@@ -160,8 +191,8 @@
     </div>
     
     <div class="btn-grid">
-        <button class="btn-save" onclick="saveRecord()">この内容を記録する 📝</button>
-        <button class="btn-export" onclick="exportHistory()">文章で記録を出力（共有） 📤</button>
+        <button class="btn-save" onclick="saveRecord()">記録する 📝</button>
+        <button class="btn-export" onclick="exportHistory()">クリップボードに全コピー 📋</button>
     </div>
 
     <div class="add-menu-box">
@@ -171,17 +202,18 @@
 
     <div class="history-section">
         <div class="history-title">
-            <span>📊 過去の筋トレ記録一覧</span>
-            <button class="clear-all-btn" onclick="clearAllHistory()">全消去</button>
+            <span>📊 過去の筋トレ記録</span>
         </div>
         <div class="history-list" id="historyList"></div>
     </div>
+
+    <div class="signature">Created by YUU</div>
 </div>
 
 <script>
     const defaultMenus = ["逆手懸垂", "腕立て", "カーフレイズ", "スクワット"];
-    let customMenus = JSON.parse(localStorage.getItem('myCustomMenusV2')) || defaultMenus;
-    let historyData = JSON.parse(localStorage.getItem('workoutDateTimeHistoryV2')) || [];
+    let customMenus = JSON.parse(localStorage.getItem('pureLocalMenus')) || defaultMenus;
+    let historyData = JSON.parse(localStorage.getItem('pureLocalHistory')) || [];
 
     initMenuSelect();
     renderHistory();
@@ -197,121 +229,91 @@
         });
     }
 
+    function deleteCurrentMenu() {
+        const select = document.getElementById('workoutSelect');
+        const currentMenu = select.value;
+        if (!currentMenu) return;
+
+        if (confirm(`種目リストから「${currentMenu}」を削除しますか？`)) {
+            customMenus = customMenus.filter(m => m !== currentMenu);
+            localStorage.setItem('pureLocalMenus', JSON.stringify(customMenus));
+            initMenuSelect();
+        }
+    }
+
     function addNewMenu() {
         const input = document.getElementById('newMenuInput');
         const menuName = input.value.trim();
-        
-        if (!menuName) {
-            alert('種目名を入力してね！💡');
-            return;
-        }
-        if (customMenus.includes(menuName)) {
-            alert('その種目はもうあるよ！👀');
-            return;
-        }
+        if (!menuName) return;
+        if (customMenus.includes(menuName)) { alert('その種目はもうあるよ！👀'); return; }
 
         customMenus.push(menuName);
-        localStorage.setItem('myCustomMenusV2', JSON.stringify(customMenus));
+        localStorage.setItem('pureLocalMenus', JSON.stringify(customMenus));
         initMenuSelect();
-        
         document.getElementById('workoutSelect').value = menuName;
         input.value = '';
-        alert(`「${menuName}」を追加したよ！✨`);
     }
 
     function saveRecord() {
         const countInput = document.getElementById('countInput');
         const countVal = parseInt(countInput.value, 10);
-
-        if (isNaN(countVal) || countVal <= 0) {
-            alert('1回以上の正しい回数を入力してね！💪');
-            return;
-        }
+        if (isNaN(countVal) || countVal <= 0) { return; }
 
         const selectedMenu = document.getElementById('workoutSelect').value;
         const now = new Date();
-        
         const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
         const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-        const newRecord = {
-            date: dateStr,
-            time: timeStr,
-            menu: selectedMenu,
-            count: countVal
-        };
+        const newRecord = { date: dateStr, time: timeStr, menu: selectedMenu, count: countVal, id: now.getTime() };
 
+        // ローカルストレージに即時保存
         historyData.unshift(newRecord);
-        localStorage.setItem('workoutDateTimeHistoryV2', JSON.stringify(historyData));
-
+        localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
+        
+        // 確認画面なしで一瞬でリセット＆描画更新
         countInput.value = '';
         renderHistory();
-        alert(`${selectedMenu} を ${newRecord.count}回 記録したよ！🔥`);
     }
 
     function renderHistory() {
         const list = document.getElementById('historyList');
         list.innerHTML = '';
-
         if (historyData.length === 0) {
             list.innerHTML = '<div style="text-align:center; color:#a0aec0; padding:20px;">まだ記録がありません。</div>';
             return;
         }
-
         historyData.forEach(item => {
             const div = document.createElement('div');
             div.className = 'history-item';
             div.innerHTML = `
-                <div class="history-meta">
-                    <span>📅 ${item.date}</span>
-                    <span>⏰ ${item.time}</span>
+                <div class="history-content">
+                    <div class="history-meta"><span>📅 ${item.date}</span><span>⏰ ${item.time}</span></div>
+                    <div class="history-data"><span class="menu-name">💪 ${item.menu}</span><span class="count-val">${item.count} 回</span></div>
                 </div>
-                <div class="history-data">
-                    <span class="menu-name">💪 ${item.menu}</span>
-                    <span class="count-val">${item.count} 回</span>
-                </div>
+                <button class="btn-item-delete" onclick="deleteHistoryItem(${item.id})">🗑️</button>
             `;
             list.appendChild(div);
         });
     }
 
-    function exportHistory() {
-        if (historyData.length === 0) {
-            alert('出力する記録がまだないよ！👀');
-            return;
-        }
-
-        let exportText = "【筋トレ実践記録】\\n\\n";
-        historyData.forEach(item => {
-            exportText += `📅 ${item.date} ${item.time} | 💪 ${item.menu} : ${item.count}回\\n`;
-        });
-
-        if (navigator.share) {
-            navigator.share({
-                title: '筋トレ記録',
-                text: exportText
-            }).catch(err => {
-                copyToClipboard(exportText);
-            });
-        } else {
-            copyToClipboard(exportText);
+    function deleteHistoryItem(id) {
+        if (confirm('この記録を履歴から削除しますか？')) {
+            historyData = historyData.filter(item => item.id !== id);
+            localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
+            renderHistory();
         }
     }
 
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            alert('すべての記録を文章としてコピーしたよ！📋\\nそのままLINEやメモ帳に貼り付けられます✨');
+    function exportHistory() {
+        if (historyData.length === 0) { alert('コピーする記録がまだないよ！👀'); return; }
+        let exportText = "【筋トレ実践記録】\n\n";
+        historyData.forEach(item => { exportText += `📅 ${item.date} ${item.time} | 💪 ${item.menu} : ${item.count}回\n`; });
+        
+        navigator.clipboard.writeText(exportText).then(() => {
+            alert('クリップボードにコピーしたよ！📋\nKeepやAIにそのまま貼り付けてね✨');
         }).catch(err => {
             alert('コピーに失敗しちゃいました💦');
         });
-    }
-
-    function clearAllHistory() {
-        if (confirm('全記録を消去しますか？')) {
-            historyData = [];
-            localStorage.removeItem('workoutDateTimeHistoryV2');
-            renderHistory();
-        }
     }
 </script>
 
