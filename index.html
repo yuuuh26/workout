@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>筋トレローカル記録 - YUU Edition</title>
+    <title>筋トレ記録 - YUU Edition</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -23,7 +23,7 @@
             max-width: 450px;
             box-sizing: border-box;
         }
-        h1 { color: #2d3436; text-align: center; margin-top: 0; font-size: 22px; }
+        h1 { color: #2d3436; text-align: center; margin-top: 0; font-size: 22px; margin-bottom: 25px; }
         
         .label {
             font-size: 14px;
@@ -110,6 +110,59 @@
         }
         .btn-new-menu { background-color: #a4b0be; color: white; padding: 10px 15px; font-size: 14px; border-radius: 8px; flex-shrink: 0; }
 
+        .best-section {
+            background: #fff9db;
+            border: 1px solid #fab005;
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .best-title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #f59f00;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .best-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .best-item {
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #fff3bf;
+            display: flex;
+            justify-content: space-between;
+        }
+        .best-name { color: #495057; font-weight: bold; }
+        .best-val { color: #f59f00; font-weight: bold; }
+
+        /* 💡 自己ベストの下に移動した期間＆日数カウンターのスタイル */
+        .day-counter-box {
+            background: #e3faf2;
+            color: #0ca678;
+            padding: 12px;
+            border-radius: 14px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .day-counter-title {
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        .day-counter-period {
+            font-size: 12px;
+            color: #37b24d;
+            font-weight: normal;
+        }
+
         .history-section {
             border-top: 2px solid #f1f2f6;
             padding-top: 20px;
@@ -118,9 +171,6 @@
             font-size: 18px;
             color: #2d3436;
             margin: 0 0 15px 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
         .history-list {
             max-height: 280px;
@@ -179,6 +229,7 @@
 <div class="container">
     <h1>🔥 筋トレ記録 🔥</h1>
     
+    <!-- 💡 最上部にきて、すぐ入力できるよう配置変更！ -->
     <span class="label">種目の選択</span>
     <div class="selector-box">
         <select class="workout-selector" id="workoutSelect"></select>
@@ -200,6 +251,17 @@
         <button class="btn-new-menu" onclick="addNewMenu()">種目を追加</button>
     </div>
 
+    <div class="best-section">
+        <div class="best-title">🏆 自己ベスト（最高回数）</div>
+        <div class="best-grid" id="bestGrid"></div>
+    </div>
+
+    <!-- 💡 ご要望通り、自己ベストの下の欄に移動！ -->
+    <div class="day-counter-box" id="dayCounterBox">
+        <div class="day-counter-title" id="dayCounterDisplay">現在の保存日数: 0 日間</div>
+        <div class="day-counter-period" id="periodDisplay">記録がありません</div>
+    </div>
+
     <div class="history-section">
         <div class="history-title">
             <span>📊 過去の筋トレ記録</span>
@@ -215,7 +277,12 @@
     let customMenus = JSON.parse(localStorage.getItem('pureLocalMenus')) || defaultMenus;
     let historyData = JSON.parse(localStorage.getItem('pureLocalHistory')) || [];
 
+    let currentDiffDays = 0;
+    let currentPeriodText = "記録がありません";
+
     initMenuSelect();
+    updateAppStatus();
+    renderBests();
     renderHistory();
 
     function initMenuSelect() {
@@ -229,6 +296,75 @@
         });
     }
 
+    function updateAppStatus() {
+        const counterDisplay = document.getElementById('dayCounterDisplay');
+        const periodDisplay = document.getElementById('periodDisplay');
+        const box = document.getElementById('dayCounterBox');
+
+        if (historyData.length === 0) {
+            counterDisplay.innerText = "現在の保存日数: 0 日間";
+            periodDisplay.innerText = "記録がありません";
+            currentDiffDays = 0;
+            currentPeriodText = "記録がありません";
+            box.style.backgroundColor = "#e3faf2";
+            box.style.color = "#0ca678";
+            return;
+        }
+
+        const oldestRecord = historyData[historyData.length - 1];
+        const newestRecord = historyData[0];
+
+        const start = new Date(oldestRecord.date);
+        const end = new Date(newestRecord.date);
+        const diffTime = Math.abs(end - start);
+        currentDiffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+        const formatDateText = (dateStr) => {
+            const d = new Date(dateStr);
+            return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日`;
+        };
+        
+        currentPeriodText = `${formatDateText(oldestRecord.date)} 〜 ${formatDateText(newestRecord.date)}`;
+        
+        counterDisplay.innerText = `最初の記録から ${currentDiffDays} 日目`;
+        periodDisplay.innerText = `📅 ${currentPeriodText}`;
+
+        box.style.backgroundColor = "#e3faf2";
+        box.style.color = "#0ca678";
+        periodDisplay.style.color = "#37b24d";
+
+        if (currentDiffDays >= 100) {
+            box.style.backgroundColor = "#fff0f6";
+            box.style.color = "#e64980";
+            periodDisplay.style.color = "#f06595";
+            
+            if (!localStorage.getItem('alerted100DaysPure')) {
+                alert(`📋 最初の記録から100日以上が経過しています！ 📋\n\nスマホ内にデータが溜まってきているので、必要に応じて「クリップボードに全コピー」をして、外部（Keepなど）へバックアップを行ってください。✨`);
+                localStorage.setItem('alerted100DaysPure', 'true');
+            }
+        } else {
+            localStorage.removeItem('alerted100DaysPure');
+        }
+    }
+
+    function renderBests() {
+        const grid = document.getElementById('bestGrid');
+        grid.innerHTML = '';
+
+        customMenus.forEach(menu => {
+            const records = historyData.filter(item => item.menu === menu);
+            const maxCount = records.length > 0 ? Math.max(...records.map(item => item.count)) : 0;
+
+            const div = document.createElement('div');
+            div.className = 'best-item';
+            div.innerHTML = `
+                <span class="best-name">${menu}</span>
+                <span class="best-val">${maxCount}回</span>
+            `;
+            grid.appendChild(div);
+        });
+    }
+
     function deleteCurrentMenu() {
         const select = document.getElementById('workoutSelect');
         const currentMenu = select.value;
@@ -238,6 +374,7 @@
             customMenus = customMenus.filter(m => m !== currentMenu);
             localStorage.setItem('pureLocalMenus', JSON.stringify(customMenus));
             initMenuSelect();
+            renderBests();
         }
     }
 
@@ -252,6 +389,7 @@
         initMenuSelect();
         document.getElementById('workoutSelect').value = menuName;
         input.value = '';
+        renderBests();
     }
 
     function saveRecord() {
@@ -266,13 +404,13 @@
 
         const newRecord = { date: dateStr, time: timeStr, menu: selectedMenu, count: countVal, id: now.getTime() };
 
-        // ローカルストレージに即時保存
         historyData.unshift(newRecord);
         localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
         
-        // 確認画面なしで一瞬でリセット＆描画更新
         countInput.value = '';
         renderHistory();
+        renderBests();
+        updateAppStatus();
     }
 
     function renderHistory() {
@@ -297,20 +435,31 @@
     }
 
     function deleteHistoryItem(id) {
-        if (confirm('この記録を履歴から削除しますか？')) {
+        if (confirm('⚠️ 本当にこの記録を履歴から削除してもよろしいですか？（この操作は取り消せません）')) {
             historyData = historyData.filter(item => item.id !== id);
             localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
             renderHistory();
+            renderBests();
+            updateAppStatus();
         }
     }
 
     function exportHistory() {
         if (historyData.length === 0) { alert('コピーする記録がまだないよ！👀'); return; }
-        let exportText = "【筋トレ実践記録】\n\n";
-        historyData.forEach(item => { exportText += `📅 ${item.date} ${item.time} | 💪 ${item.menu} : ${item.count}回\n`; });
+        
+        let exportText = "### 📋 筋トレ実践記録\n";
+        exportText += `- **対象期間**: ${currentPeriodText}\n`;
+        exportText += `- **経過日数**: 最初の記録から ${currentDiffDays} 日目\n\n`;
+        
+        exportText += "| 日付 | 時間 | 種目 | 回数 |\n";
+        exportText += "| :--- | :--- | :--- | :--- |\n";
+        
+        historyData.forEach(item => {
+            exportText += `| ${item.date} | ${item.time} | ${item.menu} | ${item.count}回 |\n`;
+        });
         
         navigator.clipboard.writeText(exportText).then(() => {
-            alert('クリップボードにコピーしたよ！📋\nKeepやAIにそのまま貼り付けてね✨');
+            alert('見やすいテーブル形式でクリップボードにコピーしたよ！📋✨\nKeepへの保管や、AIへの分析依頼にそのまま使ってね！');
         }).catch(err => {
             alert('コピーに失敗しちゃいました💦');
         });
