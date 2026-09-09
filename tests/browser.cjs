@@ -1,0 +1,32 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'), path=require('node:path'), http=require('node:http');
+const root=path.resolve(__dirname,'..');
+const server=http.createServer((req,res)=>{const name=req.url.split('?')[0];const file=path.join(root,name==='/'?'index.html':name);if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}fs.readFile(file,(err,data)=>{if(err){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.png')?'image/png':file.endsWith('.webmanifest')?'application/manifest+json':'text/html');res.end(data);});});
+(async()=>{
+ await new Promise(resolve=>server.listen(8765,'127.0.0.1',resolve));
+ const browser=await chromium.launch({headless:true});const ctx=await browser.newContext({timezoneId:'Asia/Tokyo',viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});const p=await ctx.newPage();p.on('dialog',d=>d.accept());const errors=[];p.on('pageerror',e=>errors.push(e.message));
+ await p.goto('http://localhost:8765');await p.waitForFunction(()=>mode==='legacy');
+ const seed={menus:['腕立て','逆手懸垂','<b>種目</b>'],history:[{date:'2026/09/09',time:'10:00',menu:'腕立て',count:24,id:1},{date:'2026/09/01',time:'09:00',menu:'逆手懸垂',count:14,id:1}]};
+ await p.evaluate(s=>{localStorage.setItem('pureLocalMenus',JSON.stringify(s.menus));localStorage.setItem('pureLocalHistory',JSON.stringify(s.history));},seed);await p.reload();await p.waitForFunction(()=>mode==='legacy');
+ const dl=p.waitForEvent('download');await p.evaluate(()=>downloadBackup(true));const backup=await dl;await backup.saveAs('/tmp/workout-backup.json');
+ await p.evaluate(()=>migrateStorage());assert.equal(await p.evaluate(()=>mode),'indexeddb');assert.deepEqual(await p.evaluate(()=>state),seed);assert.deepEqual(await p.evaluate(()=>JSON.parse(localStorage.pureLocalHistory)),seed.history);
+ await p.reload();await p.waitForFunction(()=>mode==='indexeddb');assert.deepEqual(await p.evaluate(()=>state),seed);
+ await p.locator('#dateDetails summary').click();await p.locator('#recordDate').fill('2026-08-31T18:30');await p.locator('#countInput').fill('30');await p.evaluate(()=>saveRecord());assert.equal(await p.locator('#recordDate').inputValue(),'');assert.equal(await p.evaluate(()=>state.history[0].date),'2026/08/31');assert.equal(await p.evaluate(()=>ordered().at(-1).r.date),'2026/08/31');
+ const md=p.waitForEvent('download');await p.evaluate(()=>exportMarkdown());assert.equal((await md).suggestedFilename(),'筋トレ記録_20260831-20260909.md');
+ await p.evaluate(()=>exportHistory());assert.match(await p.evaluate(()=>navigator.clipboard.readText()),/2026\/08\/31/);
+ await p.locator('#countInput').fill('10');await p.evaluate(()=>saveRecord());assert.notEqual(await p.evaluate(()=>state.history[0].date),'2026/08/31');
+ await p.evaluate(()=>deleteHistoryItem(2));assert.equal(await p.evaluate(()=>state.history.filter(r=>r.id===1).length),1);
+ await p.locator('#restoreFile').setInputFiles('/tmp/workout-backup.json');await p.waitForFunction(()=>state.history.length===2);assert.deepEqual(await p.evaluate(()=>state),seed);
+ const q=await ctx.newPage();await q.goto('http://localhost:8765');await q.waitForFunction(()=>mode==='indexeddb');await p.locator('#countInput').fill('11');await p.evaluate(()=>saveRecord());await q.locator('#countInput').fill('12');await q.evaluate(()=>saveRecord());assert.match(await q.locator('#appMessage').innerText(),/別の画面/);
+ assert.equal(await p.locator('#bestGrid b').count(),0);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await p.screenshot({path:'/tmp/workout-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
+ const before=await p.evaluate(()=>JSON.stringify(state));
+ await p.evaluate(()=>{window.realWrite=writeDB;writeDB=async()=>{throw Error('テスト: 保存失敗');};});
+ await p.locator('#countInput').fill('99');await p.evaluate(()=>saveRecord());assert.equal(await p.evaluate(()=>JSON.stringify(state)),before);assert.equal(await p.locator('#countInput').inputValue(),'99');
+ await p.evaluate(()=>{writeDB=window.realWrite;Object.defineProperty(navigator.storage,'persist',{value:async()=>false,configurable:true});});await p.evaluate(()=>requestPersistence());assert.equal(await p.evaluate(()=>mode),'indexeddb');
+ 
+ const bad=await browser.newContext();const bp=await bad.newPage();await bp.goto('http://localhost:8765');await bp.waitForFunction(()=>mode==='legacy');await bp.evaluate(()=>localStorage.setItem('pureLocalHistory','broken'));await bp.reload();await bp.waitForFunction(()=>mode==='error');assert.equal(await bp.evaluate(()=>localStorage.pureLocalHistory),'broken');
+ console.log('PASS migration exact contents and duplicate IDs; legacy retention; reload; historical/current dates; period filename; clipboard; single deletion; JSON restore; stale-tab protection; text safety; mobile width; malformed legacy protection');
+ await browser.close();server.close();
+})().catch(e=>{console.error(e);process.exit(1)});

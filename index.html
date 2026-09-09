@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#57ce77">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
     <title>筋トレ記録 - YUU Edition</title>
     <style>
         body {
@@ -40,6 +45,7 @@
             margin-bottom: 15px;
         }
         .workout-selector {
+            min-width: 0;
             flex: 1;
             padding: 12px;
             font-size: 16px;
@@ -102,6 +108,7 @@
             gap: 8px;
         }
         .add-menu-input {
+            min-width: 0;
             flex: 1;
             padding: 10px;
             border: 1px solid #ccc;
@@ -241,9 +248,16 @@
         <input type="number" class="count-input" id="countInput" inputmode="numeric" placeholder="0" min="1">
     </div>
     
+    <details id="dateDetails" style="margin-bottom:16px">
+        <summary>日時を変更</summary>
+        <label class="label" for="recordDate">実際に筋トレした日時</label>
+        <input id="recordDate" type="datetime-local" style="padding:10px;max-width:100%;box-sizing:border-box">
+        <button type="button" id="resetDate">現在日時に戻す</button>
+    </details>
     <div class="btn-grid">
         <button class="btn-save" onclick="saveRecord()">記録する 📝</button>
         <button class="btn-export" onclick="exportHistory()">クリップボードに全コピー 📋</button>
+        <button class="btn-export" onclick="exportMarkdown()">Markdownファイルを保存 📄</button>
     </div>
 
     <div class="add-menu-box">
@@ -269,202 +283,25 @@
         <div class="history-list" id="historyList"></div>
     </div>
 
+    <details style="margin-top:20px" id="dataSettings">
+        <summary>データ管理</summary>
+        <p id="storageStatus" role="status"></p>
+        <p id="persistentStatus"></p>
+        <button onclick="downloadBackup()">JSONバックアップを保存</button>
+        <p><label>JSONから復元 <input id="restoreFile" type="file" accept=".json,application/json"></label></p>
+        <button onclick="requestPersistence()">保存の保護を申請</button>
+        <p style="font-size:12px">保護が許可されても、ブラウザデータの削除・端末故障には備えられません。JSONバックアップを保管してください。</p>
+    </details>
+    <section id="migrationPanel" hidden style="margin-top:16px;background:#e3faf2;padding:12px;border-radius:12px">
+        <strong>記録の保存方式を更新できます</strong>
+        <p>まずJSONバックアップを保存し、ダウンロードしたファイルを確認してください。元データを残して移行します。</p>
+        <button onclick="downloadBackup(true)">① 移行前バックアップを保存</button>
+        <button id="migrateButton" onclick="migrateStorage()" disabled>② 保存したので移行する</button>
+    </section>
+    <div id="appMessage" role="status" style="margin-top:12px"></div>
     <div class="signature">Created by YUU</div>
 </div>
 
-<script>
-    const defaultMenus = ["逆手懸垂", "腕立て", "カーフレイズ", "スクワット"];
-    let customMenus = JSON.parse(localStorage.getItem('pureLocalMenus')) || defaultMenus;
-    let historyData = JSON.parse(localStorage.getItem('pureLocalHistory')) || [];
-
-    let currentDiffDays = 0;
-    let currentPeriodText = "記録がありません";
-
-    initMenuSelect();
-    updateAppStatus();
-    renderBests();
-    renderHistory();
-
-    function initMenuSelect() {
-        const select = document.getElementById('workoutSelect');
-        select.innerHTML = '';
-        customMenus.forEach(menu => {
-            const opt = document.createElement('option');
-            opt.value = menu;
-            opt.innerText = menu;
-            select.appendChild(opt);
-        });
-    }
-
-    function updateAppStatus() {
-        const counterDisplay = document.getElementById('dayCounterDisplay');
-        const periodDisplay = document.getElementById('periodDisplay');
-        const box = document.getElementById('dayCounterBox');
-
-        if (historyData.length === 0) {
-            counterDisplay.innerText = "現在の保存日数: 0 日間";
-            periodDisplay.innerText = "記録がありません";
-            currentDiffDays = 0;
-            currentPeriodText = "記録がありません";
-            box.style.backgroundColor = "#e3faf2";
-            box.style.color = "#0ca678";
-            return;
-        }
-
-        const oldestRecord = historyData[historyData.length - 1];
-        const newestRecord = historyData[0];
-
-        const start = new Date(oldestRecord.date);
-        const end = new Date(newestRecord.date);
-        const diffTime = Math.abs(end - start);
-        currentDiffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-        const formatDateText = (dateStr) => {
-            const d = new Date(dateStr);
-            return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日`;
-        };
-        
-        currentPeriodText = `${formatDateText(oldestRecord.date)} 〜 ${formatDateText(newestRecord.date)}`;
-        
-        counterDisplay.innerText = `最初の記録から ${currentDiffDays} 日目`;
-        periodDisplay.innerText = `📅 ${currentPeriodText}`;
-
-        box.style.backgroundColor = "#e3faf2";
-        box.style.color = "#0ca678";
-        periodDisplay.style.color = "#37b24d";
-
-        if (currentDiffDays >= 100) {
-            box.style.backgroundColor = "#fff0f6";
-            box.style.color = "#e64980";
-            periodDisplay.style.color = "#f06595";
-            
-            if (!localStorage.getItem('alerted100DaysPure')) {
-                alert(`📋 最初の記録から100日以上が経過しています！ 📋\n\nスマホ内にデータが溜まってきているので、必要に応じて「クリップボードに全コピー」をして、外部（Keepなど）へバックアップを行ってください。✨`);
-                localStorage.setItem('alerted100DaysPure', 'true');
-            }
-        } else {
-            localStorage.removeItem('alerted100DaysPure');
-        }
-    }
-
-    function renderBests() {
-        const grid = document.getElementById('bestGrid');
-        grid.innerHTML = '';
-
-        customMenus.forEach(menu => {
-            const records = historyData.filter(item => item.menu === menu);
-            const maxCount = records.length > 0 ? Math.max(...records.map(item => item.count)) : 0;
-
-            const div = document.createElement('div');
-            div.className = 'best-item';
-            div.innerHTML = `
-                <span class="best-name">${menu}</span>
-                <span class="best-val">${maxCount}回</span>
-            `;
-            grid.appendChild(div);
-        });
-    }
-
-    function deleteCurrentMenu() {
-        const select = document.getElementById('workoutSelect');
-        const currentMenu = select.value;
-        if (!currentMenu) return;
-
-        if (confirm(`種目リストから「${currentMenu}」を削除しますか？`)) {
-            customMenus = customMenus.filter(m => m !== currentMenu);
-            localStorage.setItem('pureLocalMenus', JSON.stringify(customMenus));
-            initMenuSelect();
-            renderBests();
-        }
-    }
-
-    function addNewMenu() {
-        const input = document.getElementById('newMenuInput');
-        const menuName = input.value.trim();
-        if (!menuName) return;
-        if (customMenus.includes(menuName)) { alert('その種目はもうあるよ！👀'); return; }
-
-        customMenus.push(menuName);
-        localStorage.setItem('pureLocalMenus', JSON.stringify(customMenus));
-        initMenuSelect();
-        document.getElementById('workoutSelect').value = menuName;
-        input.value = '';
-        renderBests();
-    }
-
-    function saveRecord() {
-        const countInput = document.getElementById('countInput');
-        const countVal = parseInt(countInput.value, 10);
-        if (isNaN(countVal) || countVal <= 0) { return; }
-
-        const selectedMenu = document.getElementById('workoutSelect').value;
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-        const newRecord = { date: dateStr, time: timeStr, menu: selectedMenu, count: countVal, id: now.getTime() };
-
-        historyData.unshift(newRecord);
-        localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
-        
-        countInput.value = '';
-        renderHistory();
-        renderBests();
-        updateAppStatus();
-    }
-
-    function renderHistory() {
-        const list = document.getElementById('historyList');
-        list.innerHTML = '';
-        if (historyData.length === 0) {
-            list.innerHTML = '<div style="text-align:center; color:#a0aec0; padding:20px;">まだ記録がありません。</div>';
-            return;
-        }
-        historyData.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'history-item';
-            div.innerHTML = `
-                <div class="history-content">
-                    <div class="history-meta"><span>📅 ${item.date}</span><span>⏰ ${item.time}</span></div>
-                    <div class="history-data"><span class="menu-name">💪 ${item.menu}</span><span class="count-val">${item.count} 回</span></div>
-                </div>
-                <button class="btn-item-delete" onclick="deleteHistoryItem(${item.id})">🗑️</button>
-            `;
-            list.appendChild(div);
-        });
-    }
-
-    function deleteHistoryItem(id) {
-        if (confirm('⚠️ 本当にこの記録を履歴から削除してもよろしいですか？（この操作は取り消せません）')) {
-            historyData = historyData.filter(item => item.id !== id);
-            localStorage.setItem('pureLocalHistory', JSON.stringify(historyData));
-            renderHistory();
-            renderBests();
-            updateAppStatus();
-        }
-    }
-
-    function exportHistory() {
-        if (historyData.length === 0) { alert('コピーする記録がまだないよ！👀'); return; }
-        
-        let exportText = "### 📋 筋トレ実践記録\n";
-        exportText += `- **対象期間**: ${currentPeriodText}\n`;
-        exportText += `- **経過日数**: 最初の記録から ${currentDiffDays} 日目\n\n`;
-        
-        exportText += "| 日付 | 時間 | 種目 | 回数 |\n";
-        exportText += "| :--- | :--- | :--- | :--- |\n";
-        
-        historyData.forEach(item => {
-            exportText += `| ${item.date} | ${item.time} | ${item.menu} | ${item.count}回 |\n`;
-        });
-        
-        navigator.clipboard.writeText(exportText).then(() => {
-            alert('見やすいテーブル形式でクリップボードにコピーしたよ！📋✨\nKeepへの保管や、AIへの分析依頼にそのまま使ってね！');
-        }).catch(err => {
-            alert('コピーに失敗しちゃいました💦');
-        });
-    }
-</script>
-
+<script src="./app.js"></script>
 </body>
 </html>
