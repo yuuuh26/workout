@@ -7,6 +7,40 @@ let currentDiffDays = 0, currentPeriodText = '記録がありません';
 const clone = x => JSON.parse(JSON.stringify(x));
 const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
 function message(text) { $('appMessage').textContent = text; }
+let toastTimer;
+function showToast(text) {
+    let toast=$('downloadToast');
+    if(!toast){
+        toast=document.createElement('div');
+        toast.id='downloadToast';
+        toast.setAttribute('role','status');
+        toast.setAttribute('aria-live','polite');
+        Object.assign(toast.style,{
+            position:'fixed',
+            left:'50%',
+            bottom:'28px',
+            transform:'translateX(-50%) translateY(12px)',
+            background:'#2d3436',
+            color:'#fff',
+            padding:'12px 18px',
+            borderRadius:'12px',
+            boxShadow:'0 6px 20px rgba(0,0,0,.18)',
+            fontSize:'14px',
+            fontWeight:'bold',
+            zIndex:'9999',
+            opacity:'0',
+            transition:'opacity .18s ease, transform .18s ease',
+            maxWidth:'calc(100vw - 40px)',
+            textAlign:'center',
+            pointerEvents:'none'
+        });
+        document.body.append(toast);
+    }
+    toast.textContent=text;
+    clearTimeout(toastTimer);
+    requestAnimationFrame(()=>{toast.style.opacity='1';toast.style.transform='translateX(-50%) translateY(0)';});
+    toastTimer=setTimeout(()=>{toast.style.opacity='0';toast.style.transform='translateX(-50%) translateY(12px)';},2600);
+}
 function validate(s) {
     if (!s || !Array.isArray(s.menus) || !s.menus.every(x=>typeof x==='string') || !Array.isArray(s.history)) throw Error('バックアップの形式が正しくありません。');
     for (const r of s.history) if (!r || typeof r.date!=='string' || typeof r.time!=='string' || typeof r.menu!=='string' || !Number.isFinite(r.count) || r.count<=0 || !Number.isFinite(r.id) || !Number.isFinite(recordTime(r))) throw Error('読み取れない記録があります。元データは変更しません。');
@@ -145,7 +179,7 @@ function download(text,name,type) {
     const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 async function exportHistory() { try {await navigator.clipboard.writeText(exportText());alert('見やすいテーブル形式でクリップボードにコピーしたよ！📋✨\nKeepへの保管や、AIへの分析依頼にそのまま使ってね！');} catch(e){message(e.message);} }
-function exportMarkdown() {try {const text=exportText(true),rows=ordered(),date=r=>r.date.replaceAll('/','');download(text,`筋トレ記録_${date(rows.at(-1).r)}-${date(rows[0].r)}.md`,'text/markdown;charset=utf-8');}catch(e){message(e.message);} }
+function exportMarkdown() {try {const text=exportText(true),rows=ordered(),date=r=>r.date.replaceAll('/','');download(text,`筋トレ記録_${date(rows.at(-1).r)}-${date(rows[0].r)}.md`,'text/markdown;charset=utf-8');showToast('Markdownファイルのダウンロードを開始しました 📄');}catch(e){message(e.message);} }
 function downloadBackup(migration=false) {
     try {
         if(!state)throw Error('データを読み込めていません。');
