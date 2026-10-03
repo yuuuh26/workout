@@ -230,6 +230,16 @@
             letter-spacing: 2px;
             text-transform: uppercase;
         }
+        [hidden] { display:none !important; }
+        #cloudSection {margin-top:20px;border-top:1px solid #e3faf2;padding-top:12px;text-align:left;font-size:14px;line-height:1.6;}
+        #cloudSection h2 {font-size:18px;}
+        #dataSettings button, dialog button {margin:6px 2px;padding:10px 12px;background:#e3faf2;color:#174d32;font-size:13px;}
+        #cloudSection input, dialog input {display:block;box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #ccd6d0;border-radius:8px;margin:8px 0;font-size:16px;}
+        #cloudSection p {overflow-wrap:anywhere;}
+        .cloud-row {display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 0;border-bottom:1px solid #edf2f7;}
+        .cloud-row span {flex:1 1 140px;white-space:pre-line;overflow-wrap:anywhere;}
+        .cloud-management {margin:16px 0;}
+        dialog {max-width:calc(100vw - 48px);width:340px;border:0;border-radius:14px;}
     </style>
 </head>
 <body>
@@ -241,7 +251,7 @@
     <span class="label">種目の選択</span>
     <div class="selector-box">
         <select class="workout-selector" id="workoutSelect"></select>
-        <button class="btn-delete-menu" onclick="deleteCurrentMenu()">消去 ❌</button>
+        <button class="btn-delete-menu" data-action="deleteCurrentMenu()">消去 ❌</button>
     </div>
 
     <div class="input-box">
@@ -256,14 +266,14 @@
         <button type="button" id="resetDate">現在日時に戻す</button>
     </details>
     <div class="btn-grid">
-        <button class="btn-save" onclick="saveRecord()">記録する 📝</button>
-        <button class="btn-export" onclick="exportHistory()">クリップボードに全コピー 📋</button>
-        <button class="btn-export" onclick="exportMarkdown()">Markdownファイルを保存 📄</button>
+        <button class="btn-save" data-action="saveRecord()">記録する 📝</button>
+        <button class="btn-export" data-action="exportHistory()">クリップボードに全コピー 📋</button>
+        <button class="btn-export" data-action="exportMarkdown()">Markdownファイルを保存 📄</button>
     </div>
 
     <div class="add-menu-box">
         <input type="text" class="add-menu-input" id="newMenuInput" placeholder="新しい種目名を入力...">
-        <button class="btn-new-menu" onclick="addNewMenu()">種目を追加</button>
+        <button class="btn-new-menu" data-action="addNewMenu()">種目を追加</button>
     </div>
 
     <div class="best-section">
@@ -285,24 +295,64 @@
     </div>
 
     <details style="margin-top:20px" id="dataSettings">
-        <summary>データ管理</summary>
+        <summary>⚙️ データ管理・クラウド設定</summary>
         <p id="storageStatus" role="status"></p>
         <p id="persistentStatus"></p>
-        <button onclick="downloadBackup()">JSONバックアップを保存</button>
+        <button data-action="downloadBackup()">JSONバックアップを保存</button>
         <p><label>JSONから復元 <input id="restoreFile" type="file" accept=".json,application/json"></label></p>
-        <button onclick="requestPersistence()">保存の保護を申請</button>
+        <button data-action="requestPersistence()">保存の保護を申請</button>
         <p style="font-size:12px">保護が許可されても、ブラウザデータの削除・端末故障には備えられません。JSONバックアップを保管してください。</p>
+        <section id="cloudSection">
+            <h2>☁️ クラウドバックアップ</h2>
+            <p>記録するたびに自動保存。最新3世代を保持します。</p>
+            <p id="cloudStatus" role="status" aria-live="polite">読み込み中…</p>
+            <p id="cloudMigration">① 上のJSONバックアップを保存<br>② <a href="https://workout-backups.dengana-10011212.workers.dev/" target="_blank" rel="noopener">クラウド版を開く</a><br>③ JSONを読み込み、復旧キーで接続<br>④ 件数とクラウド保存の成功を確認</p>
+            <div id="cloudHostedControls" hidden>
+                <p id="cloudConnection"></p>
+                <p>前回の保存成功：<span id="cloudLastSaved"></span></p>
+                <p>未送信の変更：<span id="cloudPending"></span></p>
+                <div id="cloudLogin">
+                    <label class="label" for="recoveryKey">筋トレアプリの復旧キー</label>
+                    <input id="recoveryKey" type="password" autocomplete="off" spellcheck="false">
+                    <label class="label" for="deviceName">端末名</label>
+                    <input id="deviceName" maxlength="80" value="この端末">
+                    <button id="cloudLoginButton">クラウドに接続</button>
+                </div>
+                <button id="cloudHistoryButton">保存履歴を見る・復元</button>
+                <div id="cloudHistory"></div>
+                <button id="cloudSafetyExport">復元前のデータを書き出す</button>
+                <details class="cloud-management">
+                    <summary>接続している端末の管理</summary>
+                    <p>各操作の前に復旧キーを入力してください。</p>
+                    <input id="managementKey" type="password" placeholder="復旧キー" autocomplete="off" spellcheck="false">
+                    <button id="cloudDevicesButton">端末一覧を見る</button>
+                    <div id="cloudDevices"></div>
+                    <button id="cloudRevokeAll">全端末の認証を取り消す</button>
+                    <button id="cloudRotate">復旧キーを変更する</button>
+                </details>
+                <button id="cloudLogout" hidden>この端末からログアウト</button>
+                <button id="cloudSave">今すぐクラウド保存</button>
+            </div>
+            <button id="cloudExport">全データのJSONを書き出す</button>
+        </section>
     </details>
     <section id="migrationPanel" hidden style="margin-top:16px;background:#e3faf2;padding:12px;border-radius:12px">
         <strong>記録の保存方式を更新できます</strong>
         <p>まずJSONバックアップを保存し、ダウンロードしたファイルを確認してください。元データを残して移行します。</p>
-        <button onclick="downloadBackup(true)">① 移行前バックアップを保存</button>
-        <button id="migrateButton" onclick="migrateStorage()" disabled>② 保存したので移行する</button>
+        <button data-action="downloadBackup(true)">① 移行前バックアップを保存</button>
+        <button id="migrateButton" data-action="migrateStorage()" disabled>② 保存したので移行する</button>
     </section>
     <div id="appMessage" role="status" style="margin-top:12px"></div>
     <div class="signature">Created by YUU</div>
 </div>
+<dialog id="newKeyDialog">
+    <p>新しい復旧キーを保存してください。</p>
+    <input id="newKey" readonly>
+    <button id="newKeyCopy">コピー</button>
+    <button id="newKeyClose">保存したので閉じる</button>
+</dialog>
 
-<script src="./app.js"></script>
+<script src="./app.js?v=2.0.0"></script>
+<script type="module" src="./js/cloud.mjs?v=2.0.0"></script>
 </body>
 </html>

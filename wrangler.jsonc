@@ -1,0 +1,8 @@
+{
+  "name": "workout-backups",
+  "main": "cloudflare/dist/site-worker.mjs",
+  "compatibility_date": "2026-10-03",
+  "account_id": "ad6d7ed5fab75575ddcb07dcf6ffe152",
+  "vars": {"DB_TABLE_PREFIX": "workout"},
+  "d1_databases": [{"binding":"DB","database_name":"personal-apps-shared","database_id":"60566fab-4eaa-45b1-866c-cbcfcc0f8dcc"}]
+}

@@ -1,0 +1,4 @@
+node_modules/
+cloudflare/dist/
+.secrets/
+*.recovery-key.txt

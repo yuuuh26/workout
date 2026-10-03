@@ -66,12 +66,27 @@ function readDB() { return new Promise((resolve,reject)=> {
     const tx=db.transaction('data','readonly'), r=tx.objectStore('data').get('state');
     tx.oncomplete=()=>resolve(r.result); tx.onabort=tx.onerror=()=>reject(tx.error||Error('保存先を読み込めません。'));
 }); }
-function writeDB(next, expected, backup) { return new Promise((resolve,reject)=> {
-    const tx=db.transaction('data','readwrite'), store=tx.objectStore('data'), r=store.get('state');
+const CLOUD_DEFAULTS=()=>({revision:0,sentRevision:0,queue:[],lastSaved:null,needsReview:false,checkedExisting:false});
+function backupData(s){return {format:'yuu-workout-backup',version:1,menus:clone(s.menus),history:clone(s.history)};}
+function cloudEntry(s,revision){return {id:crypto.randomUUID(),revision,createdAt:new Date().toISOString(),data:backupData(s)};}
+function writeDB(next, expected, backup, options={}) { return new Promise((resolve,reject)=> {
+    const tx=db.transaction('data','readwrite'), store=tx.objectStore('data'), r=store.get('state'),meta=store.get('cloud');
     let failure;
     r.onsuccess=()=> {
         if (!equal(r.result,expected)) { failure=Error('別の画面で更新されました。再読み込みしてから操作してください。'); tx.abort(); return; }
-        store.put(next,'state'); if (backup) store.put(backup,'migrationBackup');
+        // Queue the exact saved snapshot in the SAME transaction as the data.
+        meta.onsuccess=()=> {
+            store.put(next,'state'); if (backup) store.put(backup,'migrationBackup');
+            const m=meta.result||CLOUD_DEFAULTS();
+            if(options.safety)store.put({data:backupData(options.safety),queue:clone(m.queue),createdAt:new Date().toISOString()},'restoreSafety');
+            if(options.replaceQueue)m.queue=[];
+            if(options.clearReview)m.needsReview=false;
+            if(options.enqueue!==false && !equal(next,expected)){
+                m.revision++;
+                m.queue.push(cloudEntry(next,m.revision));
+            }
+            store.put(m,'cloud');
+        };
     };
     tx.oncomplete=()=>resolve(); tx.onabort=tx.onerror=()=>reject(failure||tx.error||Error('保存できませんでした。'));
 }); }
@@ -84,9 +99,9 @@ async function action(fn) {
     busy=true;
     try { await lock(fn); } catch(e) { message(e.message); } finally {busy=false;}
 }
-async function commit(next) {
+async function commit(next,options={}) {
     validate(next);
-    if (mode==='indexeddb') await writeDB(next,state);
+    if (mode==='indexeddb') await writeDB(next,state,undefined,options);
     else if(mode==='legacy') {
         if (!equal(legacy(),state) || (db && await readDB())) throw Error('保存先が更新されました。再読み込みしてください。');
         // Each existing action changes only one key. Keep legacy updates atomic.
@@ -95,7 +110,8 @@ async function commit(next) {
         if (!equal(next.menus,state.menus)) localStorage.setItem('pureLocalMenus',JSON.stringify(next.menus));
         backupSource=null; $('migrateButton').disabled=true;
     } else throw Error('保存先を確認できません。再読み込みしてください。');
-    state=next; render(); message('保存しました。');
+    state=next; render(); message('端末に保存しました。');
+    window.dispatchEvent(new Event('workout-change'));
 }
 function ordered() { return state.history.map((r,i)=>({r,i})).sort((a,b)=>recordTime(b.r)-recordTime(a.r)||a.i-b.i); }
 function render() {
@@ -194,10 +210,10 @@ function migrateStorage() {return action(async()=> {
     if(!backupSource||!equal(legacy(),backupSource))throw Error('データが変わったため、移行前バックアップを再保存してください。');
     db ||= await openDB();
     const existing=await readDB();if(existing)throw Error('すでに移行されています。再読み込みしてください。');
-    await writeDB(backupSource,undefined,backupSource);
+    await writeDB(backupSource,undefined,backupSource,{enqueue:backupSource.history.length>0});
     const saved=await readDB();
     if(!equal(saved,backupSource))throw Error('移行の照合に失敗しました。元データは残っています。');
-    state=saved;mode='indexeddb';render();message(`移行と全項目の照合が完了しました（${state.history.length}件）。旧データも残しています。`);await requestPersistence();
+    state=saved;mode='indexeddb';render();message(`移行と全項目の照合が完了しました（${state.history.length}件）。旧データも残しています。`);await requestPersistence();window.dispatchEvent(new Event('workout-change'));
 });}
 $('restoreFile').onchange=async e=> {
     const file=e.target.files[0];e.target.value='';if(!file)return;
@@ -205,7 +221,7 @@ $('restoreFile').onchange=async e=> {
     await action(async()=> {
         if(mode!=='indexeddb')throw Error('復元する前にIndexedDBへ移行してください。');
         if(!confirm(`JSONの${imported.history.length}件を確認しました。現在の${state.history.length}件をバックアップして、JSONの内容に置き換えますか？`))return;
-        downloadBackup();await commit(clone(imported));
+        downloadBackup();await commit(clone(imported),{safety:state,replaceQueue:true,clearReview:true});
     });
 };
 async function persistentStatus() {try {$('persistentStatus').textContent=navigator.storage?.persisted?(await navigator.storage.persisted()?'保存の保護: 許可済み':'保存の保護: 未許可'):'保存の保護: 未対応';}catch(e){$('persistentStatus').textContent='保存の保護: 確認できません';} }
@@ -218,8 +234,50 @@ async function init() {
         }
         const saved=await readDB();
         if(saved!==undefined){state=validate(saved);mode='indexeddb';}
-        else {state=legacy();mode='legacy';}
+        else {
+            state=legacy();mode='legacy';
+            // A new cloud origin has no old records to migrate. Pages retains
+            // its original explicit migration flow and old localStorage keys.
+            if(location.hostname==='workout-backups.dengana-10011212.workers.dev'&&!localStorage.getItem('pureLocalHistory')&&!localStorage.getItem('pureLocalMenus')){
+                await writeDB(state,undefined,undefined,{enqueue:false});mode='indexeddb';
+            }
+        }
         render();await persistentStatus();
+        window.__WORKOUT_READY__=true;window.dispatchEvent(new Event('workout-ready'));
     }catch(e){mode='error';state=null;$('storageStatus').textContent='保存先の読み込みエラー';message(e.message);}
+}
+function readLocal(key){return new Promise((resolve,reject)=>{const tx=db.transaction('data','readonly'),r=tx.objectStore('data').get(key);tx.oncomplete=()=>resolve(r.result);tx.onerror=tx.onabort=()=>reject(tx.error||Error('端末保存を読み込めません'));});}
+async function updateCloud(fn){
+    if(mode!=='indexeddb')throw Error('まず保存方式をIndexedDBへ移行してください');
+    await new Promise((resolve,reject)=>{const tx=db.transaction('data','readwrite'),s=tx.objectStore('data'),r=s.get('cloud');r.onsuccess=()=>s.put(fn(r.result||CLOUD_DEFAULTS()),'cloud');tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error||Error('送信待ち状態を保存できません'));});
+    window.dispatchEvent(new Event('workout-cloud-state'));
+}
+window.WorkoutCloud={
+    capture:async()=>backupData(mode==='indexeddb'?validate(await readDB()):state),
+    meta:async()=>(await readLocal('cloud'))||CLOUD_DEFAULTS(),
+    updateMeta:updateCloud,
+    readRecord:readLocal,
+    isIndexedDB:()=>mode==='indexeddb',
+    enqueue:async()=>lock(async()=>{
+        if(mode!=='indexeddb')throw Error('まず保存方式をIndexedDBへ移行してください');
+        const saved=validate(await readDB());
+        await updateCloud(m=>{if(!m.queue.length){m.revision++;m.queue.push(cloudEntry(saved,m.revision));}return m;});
+        window.dispatchEvent(new Event('workout-change'));
+    }),
+    restore:async(snapshot,expected)=>{
+        if(mode!=='indexeddb')throw Error('まず保存方式をIndexedDBへ移行してください');
+        const next=validate({menus:clone(snapshot.menus),history:clone(snapshot.history)});
+        await lock(async()=>{
+            const saved=validate(await readDB());
+            if(!equal(backupData(saved),expected))throw Error('確認中に端末の記録が変更されました。再度確認してください');
+            await writeDB(next,saved,undefined,{safety:expected,replaceQueue:true,clearReview:true});
+            state=next;render();message('復元しました。端末に保存済みです');window.dispatchEvent(new Event('workout-change'));
+        });
+    }
+};
+const actions={saveRecord,exportHistory,exportMarkdown,addNewMenu,deleteCurrentMenu,downloadBackup,requestPersistence,migrateStorage};
+for(const el of document.querySelectorAll('[data-action]')){
+    const name=el.dataset.action.split('(')[0];
+    el.addEventListener('click',()=>name==='downloadBackup'?downloadBackup(el.dataset.action.includes('true')):actions[name]());
 }
 init();
