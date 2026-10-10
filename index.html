@@ -195,6 +195,15 @@
             align-items: center;
         }
         .history-item:last-child { border-bottom: none; }
+        .history-item.is-today { background: #edfff2; border-left: 3px solid #37b24d; padding-left: 5px; border-radius: 8px; }
+        .history-date { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        .today-badge { display: inline-flex; padding: 2px 7px; border-radius: 999px; background: #168347; color: white; font-size: 12px; font-weight: bold; white-space: nowrap; }
+        .today-badge[hidden] { display: none; }
+        .app-url-panel { background: #f4f8fb; border: 1px solid #dce6ed; border-radius: 12px; padding: 12px; margin: 12px 0; }
+        .app-url-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .app-url-row input { flex: 1 1 170px; min-width: 0; padding: 10px; border: 1px solid #bfcbd6; border-radius: 8px; font-size: 13px; }
+        .app-url-row button { flex: 0 0 auto; padding: 10px 12px; font-size: 14px; background: #1971c2; color: white; }
+        #appUrlCopyStatus { font-size: 12px; margin: 6px 0 0; color: #1971c2; }
         .history-content { flex: 1; }
         .history-meta {
             display: flex;
@@ -296,6 +305,14 @@
 
     <details style="margin-top:20px" id="dataSettings">
         <summary>⚙️ データ管理・クラウド設定</summary>
+        <div class="app-url-panel">
+            <label class="label" for="appUrl">🔗 このアプリのURL（改良依頼用）</label>
+            <div class="app-url-row">
+                <input id="appUrl" type="url" value="https://workout-backups.dengana-10011212.workers.dev/" readonly aria-label="筋トレ記録クラウド版のURL">
+                <button id="copyAppUrl" type="button">📋 URLをコピー</button>
+            </div>
+            <p id="appUrlCopyStatus" role="status" aria-live="polite"></p>
+        </div>
         <p id="storageStatus" role="status"></p>
         <p id="persistentStatus"></p>
         <button data-action="downloadBackup()">JSONバックアップを保存</button>
@@ -352,7 +369,7 @@
     <button id="newKeyClose">保存したので閉じる</button>
 </dialog>
 
-<script src="./app.js?v=2.0.0"></script>
-<script type="module" src="./js/cloud.mjs?v=2.0.0"></script>
+<script src="./app.js?v=2.0.1"></script>
+<script type="module" src="./js/cloud.mjs?v=2.0.1"></script>
 </body>
 </html>
