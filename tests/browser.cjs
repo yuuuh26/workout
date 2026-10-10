@@ -16,6 +16,14 @@ const server=http.createServer((req,res)=>{const name=req.url.split('?')[0];cons
  const md=p.waitForEvent('download');await p.evaluate(()=>exportMarkdown());assert.equal((await md).suggestedFilename(),'筋トレ記録_20260831-20260909.md');
  await p.evaluate(()=>exportHistory());assert.match(await p.evaluate(()=>navigator.clipboard.readText()),/2026\/08\/31/);
  await p.locator('#countInput').fill('10');await p.evaluate(()=>saveRecord());assert.notEqual(await p.evaluate(()=>state.history[0].date),'2026/08/31');
+ const todayDate=await p.evaluate(()=>localTodayString());
+ assert.equal(await p.locator('.history-item.is-today').count(),await p.evaluate(d=>state.history.filter(r=>r.date===d).length,todayDate));
+ assert.ok(await p.locator('.history-item.is-today .today-badge:visible').count()>0);
+ assert.ok(!await p.evaluate(()=>exportText().includes('今日')));
+ await p.locator('#dataSettings summary').first().click();
+ await p.locator('#copyAppUrl').click();
+ assert.equal(await p.evaluate(()=>navigator.clipboard.readText()),'https://workout-backups.dengana-10011212.workers.dev/');
+ assert.match(await p.locator('#appUrlCopyStatus').innerText(),/コピーしました/);
  await p.evaluate(()=>deleteHistoryItem(2));assert.equal(await p.evaluate(()=>state.history.filter(r=>r.id===1).length),1);
  await p.locator('#restoreFile').setInputFiles('/tmp/workout-backup.json');await p.waitForFunction(()=>state.history.length===2);assert.deepEqual(await p.evaluate(()=>state),seed);
  const q=await ctx.newPage();await q.goto('http://localhost:8765');await q.waitForFunction(()=>mode==='indexeddb');await p.locator('#countInput').fill('11');await p.evaluate(()=>saveRecord());await q.locator('#countInput').fill('12');await q.evaluate(()=>saveRecord());assert.match(await q.locator('#appMessage').innerText(),/別の画面/);
