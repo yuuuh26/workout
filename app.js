@@ -114,6 +114,32 @@ async function commit(next,options={}) {
     window.dispatchEvent(new Event('workout-change'));
 }
 function ordered() { return state.history.map((r,i)=>({r,i})).sort((a,b)=>recordTime(b.r)-recordTime(a.r)||a.i-b.i); }
+function localTodayString() {
+    const now=new Date(),pad=n=>String(n).padStart(2,'0');
+    return `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())}`;
+}
+function refreshTodayMarkers() {
+    const today=localTodayString();
+    document.querySelectorAll('#historyList .history-item').forEach(el=>{
+        const matches=el.dataset.recordDate===today;
+        el.classList.toggle('is-today',matches);
+        const badge=el.querySelector('.today-badge');
+        if(badge) badge.hidden=!matches;
+    });
+}
+let todayRefreshTimer;
+function scheduleTodayRefresh() {
+    clearTimeout(todayRefreshTimer);
+    const now=new Date(),midnight=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+    todayRefreshTimer=setTimeout(()=>{
+        refreshTodayMarkers();
+        scheduleTodayRefresh();
+    },Math.max(1000,midnight.getTime()-now.getTime()+1000));
+}
+window.addEventListener('focus',()=>{refreshTodayMarkers();scheduleTodayRefresh();});
+document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden){refreshTodayMarkers();scheduleTodayRefresh();}
+});
 function render() {
     const selected=$('workoutSelect').value;
     $('workoutSelect').replaceChildren(...state.menus.map(m=>new Option(m,m)));
@@ -130,15 +156,23 @@ function render() {
     const rows=ordered();
     if(!rows.length) $('historyList').textContent='まだ記録がありません。';
     rows.forEach(({r,i})=> {
-        const el=document.createElement('div');el.className='history-item';
+        const el=document.createElement('div');el.className='history-item';el.dataset.recordDate=r.date;
         const content=document.createElement('div');content.className='history-content';
         const meta=document.createElement('div');meta.className='history-meta';
         const data=document.createElement('div');data.className='history-data';
-        for(const [parent,values] of [[meta,['📅 '+r.date,'⏰ '+r.time]],[data,['💪 '+r.menu,r.count+' 回']]]) values.forEach(text=>{const span=document.createElement('span');span.textContent=text;parent.append(span);});
+        const dateLabel=document.createElement('span');dateLabel.className='history-date';dateLabel.textContent='📅 '+r.date;
+        const badge=document.createElement('span');badge.className='today-badge';badge.textContent='今日';badge.hidden=true;
+        dateLabel.append(badge);
+        const timeLabel=document.createElement('span');timeLabel.textContent='⏰ '+r.time;
+        meta.append(dateLabel,timeLabel);
+        for(const text of ['💪 '+r.menu,r.count+' 回']) {
+            const span=document.createElement('span');span.textContent=text;data.append(span);
+        }
         content.append(meta,data);
         const del=document.createElement('button');del.className='btn-item-delete';del.textContent='🗑️';del.setAttribute('aria-label',r.menu+' '+r.date+' '+r.time+'の記録を削除');del.onclick=()=>deleteHistoryItem(i);
         el.append(content,del);$('historyList').append(el);
     });
+    refreshTodayMarkers();
     if(rows.length) {
         const oldest=rows[rows.length-1].r.date, newest=rows[0].r.date;
         const day=d=>Date.UTC(...d.split('/').map((v,i)=>+v-(i===1?1:0)));
@@ -275,6 +309,17 @@ window.WorkoutCloud={
         });
     }
 };
+$('copyAppUrl').addEventListener('click',async()=>{
+    const input=$('appUrl'),status=$('appUrlCopyStatus');
+    try {
+        await navigator.clipboard.writeText(input.value);
+        status.textContent='✓ アプリのURLをコピーしました';
+    } catch (_) {
+        input.focus();input.select();
+        status.textContent='自動コピーできませんでした。選択中のURLを手動でコピーしてください。';
+    }
+});
+scheduleTodayRefresh();
 const actions={saveRecord,exportHistory,exportMarkdown,addNewMenu,deleteCurrentMenu,downloadBackup,requestPersistence,migrateStorage};
 for(const el of document.querySelectorAll('[data-action]')){
     const name=el.dataset.action.split('(')[0];
